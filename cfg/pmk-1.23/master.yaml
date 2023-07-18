@@ -98,7 +98,7 @@ groups:
           Run the below command (based on the file location on your system) on the control plane node.
           For example,
           chmod 644 $etcdconf
-        scored: true
+        scored: false
 
       - id: 1.1.8
         text: "Ensure that the etcd pod specification file ownership is set to root:root (Automated)"
@@ -111,7 +111,7 @@ groups:
           Run the below command (based on the file location on your system) on the control plane node.
           For example,
           chown root:root $etcdconf
-        scored: true
+        scored: false
 
       - id: 1.1.9
         text: "Ensure that the Container Network Interface file permissions are set to 644 or more restrictive (Manual)"
@@ -191,7 +191,7 @@ groups:
                 op: bitmask
                 value: "600"
         remediation: |
-          Run the below command (based on the file location on your system) on the master node.
+          Run the below command (based on the file location on your system) on the control plane node.
           For example,
           chmod 600 /etc/pf9/kube.d/kubeconfigs/admin.yaml
         scored: true
@@ -203,7 +203,7 @@ groups:
           test_items:
             - flag: "root:root"
         remediation: |
-          Run the below command (based on the file location on your system) on the master node.
+          Run the below command (based on the file location on your system) on the control plane node.
           For example,
           chown root:root /etc/pf9/kube.d/kubeconfigs/admin.yaml
         scored: true
@@ -270,7 +270,7 @@ groups:
           test_items:
             - flag: "pf9:pf9group"
         remediation: |
-          Run the below command (based on the file location on your system) on the master node.
+          Run the below command (based on the file location on your system) on the control plane node.
           For example,
           chown -R pf9:pf9group /etc/pf9/kube.d/certs
         scored: true

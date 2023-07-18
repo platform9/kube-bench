@@ -59,6 +59,7 @@ master:
       - /etc/kubernetes/manifests/talos-kube-scheduler.yaml
     defaultconf: /etc/kubernetes/manifests/kube-scheduler.yaml
     kubeconfig:
+      - /etc/pf9/kube.d/kubeconfigs/kube-scheduler.yaml
       - /etc/kubernetes/scheduler.conf
       - /var/lib/kube-scheduler/kubeconfig
       - /var/lib/kube-scheduler/config.yaml
@@ -84,6 +85,7 @@ master:
       - /etc/kubernetes/manifests/talos-kube-controller-manager.yaml
     defaultconf: /etc/kubernetes/manifests/kube-controller-manager.yaml
     kubeconfig:
+      - /etc/pf9/kube.d/kubeconfigs/kube-controller-manager.yaml
       - /etc/kubernetes/controller-manager.conf
       - /var/lib/kube-controller-manager/kubeconfig
       - /system/secrets/kubernetes/kube-controller-manager/kubeconfig

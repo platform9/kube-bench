@@ -18,6 +18,8 @@ master:
     - kubelet
 
   kubernetes:
+    confs:
+      - "/etc/pf9/kube.d/kubeconfigs/admin.yaml"
     defaultconf: /etc/kubernetes/config
 
   apiserver:
@@ -29,6 +31,7 @@ master:
       - "openshift start master api"
       - "hypershift openshift-kube-apiserver"
     confs:
+      - /etc/pf9/kube.d/pod-manifests/master.yaml
       - /etc/kubernetes/manifests/kube-apiserver.yaml
       - /etc/kubernetes/manifests/kube-apiserver.yml
       - /etc/kubernetes/manifests/kube-apiserver.manifest
@@ -46,6 +49,7 @@ master:
       - "scheduler"
       - "openshift start master controllers"
     confs:
+      - /etc/pf9/kube.d/pod-manifests/master.yaml
       - /etc/kubernetes/manifests/kube-scheduler.yaml
       - /etc/kubernetes/manifests/kube-scheduler.yml
       - /etc/kubernetes/manifests/kube-scheduler.manifest
@@ -71,6 +75,7 @@ master:
       - "openshift start master controllers"
       - "hypershift openshift-controller-manager"
     confs:
+      - /etc/pf9/kube.d/pod-manifests/master.yaml
       - /etc/kubernetes/manifests/kube-controller-manager.yaml
       - /etc/kubernetes/manifests/kube-controller-manager.yml
       - /etc/kubernetes/manifests/kube-controller-manager.manifest
@@ -90,6 +95,7 @@ master:
       - "etcd"
       - "openshift start etcd"
     datadirs:
+      - /var/opt/pf9/kube/etcd/data
       - /var/lib/etcd/default.etcd
       - /var/lib/etcd/data.etcd
     confs:
@@ -124,10 +130,13 @@ node:
     - kubernetes
 
   kubernetes:
+    confs:
+      - "/etc/pf9/kube.d/kubeconfigs/admin.yaml"
     defaultconf: "/etc/kubernetes/config"
 
   kubelet:
     cafile:
+      - "/etc/pf9/certs/ca/cert.pem"
       - "/etc/kubernetes/pki/ca.crt"
       - "/etc/kubernetes/certs/ca.crt"
       - "/etc/kubernetes/cert/ca.pem"
@@ -135,6 +144,7 @@ node:
     svc:
       # These paths must also be included
       #  in the 'confs' property below
+      - "/run/systemd/system/pf9-kubelet.service"
       - "/etc/systemd/system/kubelet.service.d/10-kubeadm.conf"
       - "/etc/systemd/system/kubelet.service"
       - "/lib/systemd/system/kubelet.service"
@@ -146,6 +156,7 @@ node:
       - "hyperkube kubelet"
       - "kubelet"
     kubeconfig:
+      - "/etc/pf9/kube.d/kubeconfigs/kubelet.yaml"
       - "/etc/kubernetes/kubelet.conf"
       - "/etc/kubernetes/kubelet-kubeconfig.conf"
       - "/var/lib/kubelet/kubeconfig"
@@ -155,6 +166,7 @@ node:
       - "/etc/kubernetes/kubeconfig-kubelet"
     confs:
       - "/etc/kubernetes/kubelet-config.yaml"
+      - "/var/opt/pf9/kube/kubelet-config/bootstrap-config.yaml"
       - "/var/lib/kubelet/config.yaml"
       - "/var/lib/kubelet/config.yml"
       - "/etc/kubernetes/kubelet/kubelet-config.json"
@@ -171,6 +183,7 @@ node:
       ## of pointing to the systemd service file (which can also
       ## hold kubelet configuration).
       ## Note: The following paths must match the one under 'svc'
+      - "/run/systemd/system/pf9-kubelet.service"
       - "/etc/systemd/system/kubelet.service.d/10-kubeadm.conf"
       - "/etc/systemd/system/kubelet.service"
       - "/lib/systemd/system/kubelet.service"
@@ -191,12 +204,14 @@ node:
       - "proxy"
       - "openshift start network"
     confs:
+      - /etc/pf9/kube.d/rolebindings/kube-proxy-access-binding.yaml
       - /etc/kubernetes/proxy
       - /etc/kubernetes/addons/kube-proxy-daemonset.yaml
       - /etc/kubernetes/addons/kube-proxy-daemonset.yml
       - /var/snap/kube-proxy/current/args
       - /var/snap/microk8s/current/args/kube-proxy
     kubeconfig:
+      - "/etc/pf9/kube.d/kubeconfigs/kube-proxy.yaml"
       - "/etc/kubernetes/kubelet-kubeconfig"
       - "/etc/kubernetes/kubelet-kubeconfig.conf"
       - "/etc/kubernetes/kubelet/config"
@@ -271,6 +286,7 @@ version_mapping:
   "ack-1.0": "ack-1.0"
   "cis-1.6-k3s": "cis-1.6-k3s"
   "tkgi-1.2.53": "tkgi-1.2.53"
+  "pmk-1.23": "pmk-1.23"
 
 target_mapping:
   "cis-1.5":
@@ -378,4 +394,10 @@ target_mapping:
     - "etcd"
     - "controlplane"
     - "node"
+    - "policies"
+  "pmk-1.23":
+    - "master"
+    - "node"
+    - "controlplane"
+    - "etcd"
     - "policies"

@@ -288,6 +288,7 @@ version_mapping:
   "tkgi-1.2.53": "tkgi-1.2.53"
   "pmk-1.25": "pmk-1.25"
   "pmk-1.26": "pmk-1.26"
+  "pmk-1.27": "pmk-1.27"
 
 target_mapping:
   "cis-1.5":
@@ -403,6 +404,12 @@ target_mapping:
     - "etcd"
     - "policies"
   "pmk-1.26":
+    - "master"
+    - "node"
+    - "controlplane"
+    - "etcd"
+    - "policies"
+  "pmk-1.27":
     - "master"
     - "node"
     - "controlplane"

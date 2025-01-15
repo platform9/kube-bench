@@ -1,20 +1,30 @@
-FROM golang:1.17.0 AS build
+FROM golang:1.23.4 AS build
 WORKDIR /go/src/github.com/aquasecurity/kube-bench/
+COPY makefile makefile
 COPY go.mod go.sum ./
 COPY main.go .
 COPY check/ check/
 COPY cmd/ cmd/
 COPY internal/ internal/
 ARG KUBEBENCH_VERSION
-ARG GOOS=linux
-ARG GOARCH=amd64
-RUN GO111MODULE=on CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH go build -a -ldflags "-X github.com/aquasecurity/kube-bench/cmd.KubeBenchVersion=${KUBEBENCH_VERSION} -w" -o /go/bin/kube-bench
+RUN make build && cp kube-bench /go/bin/kube-bench
 
-FROM alpine:3.14.1 AS run
+# Add kubectl to run policies checks
+ARG KUBECTL_VERSION TARGETARCH
+RUN wget -O /usr/local/bin/kubectl "https://dl.k8s.io/release/v${KUBECTL_VERSION}/bin/linux/${TARGETARCH}/kubectl"
+RUN wget -O kubectl.sha256 "https://dl.k8s.io/release/v${KUBECTL_VERSION}/bin/linux/${TARGETARCH}/kubectl.sha256"
+
+# Verify kubectl sha256sum
+RUN /bin/bash -c 'echo "$(<kubectl.sha256)  /usr/local/bin/kubectl" | sha256sum -c -'
+
+RUN chmod +x /usr/local/bin/kubectl
+
+FROM alpine:3.21.2 AS run
 WORKDIR /opt/kube-bench/
-# add GNU ps for -C, -o cmd, and --no-headers support
+# add GNU ps for -C, -o cmd, --no-headers support and add findutils to get GNU xargs
 # https://github.com/aquasecurity/kube-bench/issues/109
-RUN apk --no-cache add procps
+# https://github.com/aquasecurity/kube-bench/issues/1656
+RUN apk --no-cache add procps findutils
 
 # Upgrading apk-tools to remediate CVE-2021-36159 - https://snyk.io/vuln/SNYK-ALPINE314-APKTOOLS-1533752
 # https://github.com/aquasecurity/kube-bench/issues/943
@@ -22,19 +32,25 @@ RUN apk --no-cache upgrade apk-tools
 
 # Openssl is used by OpenShift tests
 # https://github.com/aquasecurity/kube-bench/issues/535
-RUN apk --no-cache add openssl
+# Ensuring that we update/upgrade before installing openssl, to mitigate CVE-2021-3711 and CVE-2021-3712
+RUN apk update && apk upgrade && apk --no-cache add openssl
 
 # Add glibc for running oc command 
 RUN wget -q -O /etc/apk/keys/sgerrand.rsa.pub https://alpine-pkgs.sgerrand.com/sgerrand.rsa.pub
-RUN wget https://github.com/sgerrand/alpine-pkg-glibc/releases/download/2.33-r0/glibc-2.33-r0.apk
-RUN apk add glibc-2.33-r0.apk
+RUN apk add gcompat
 RUN apk add jq
 
-ENV PATH=$PATH:/usr/local/mount-from-host/bin
+# Add bash for running helper scripts
+RUN apk add bash
+
+ENV PATH=$PATH:/usr/local/mount-from-host/bin:/go/bin
 
 COPY --from=build /go/bin/kube-bench /usr/local/bin/kube-bench
+COPY --from=build /usr/local/bin/kubectl /usr/local/bin/kubectl
 COPY entrypoint.sh .
 COPY cfg/ cfg/
+COPY helper_scripts/check_files_owner_in_dir.sh /go/bin/
+RUN chmod a+x /go/bin/check_files_owner_in_dir.sh
 ENTRYPOINT ["./entrypoint.sh"]
 CMD ["install"]
 

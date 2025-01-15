@@ -15,7 +15,7 @@
 package cmd
 
 import (
-	"io/ioutil"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -29,9 +29,11 @@ import (
 	"github.com/spf13/viper"
 )
 
-var g string
-var e []error
-var eIndex int
+var (
+	g      string
+	e      []error
+	eIndex int
+)
 
 func fakeps(proc string) string {
 	return g
@@ -132,7 +134,7 @@ func TestGetBinaries(t *testing.T) {
 			expectErr: false,
 		},
 		{
-			// "anotherthing" in list of components but doesn't have a defintion
+			// "anotherthing" in list of components but doesn't have a definition
 			config:    map[string]interface{}{"components": []string{"apiserver", "anotherthing"}, "apiserver": map[string]interface{}{"bins": []string{"apiserver", "kube-apiserver"}}, "thing": map[string]interface{}{"bins": []string{"something else", "thing"}}},
 			psOut:     "kube-apiserver thing",
 			exp:       map[string]string{"apiserver": "kube-apiserver"},
@@ -231,6 +233,7 @@ func TestFindConfigFile(t *testing.T) {
 		{input: []string{"myfile"}, statResults: []error{nil}, exp: "myfile"},
 		{input: []string{"thisfile", "thatfile"}, statResults: []error{os.ErrNotExist, nil}, exp: "thatfile"},
 		{input: []string{"thisfile", "thatfile"}, statResults: []error{os.ErrNotExist, os.ErrNotExist}, exp: ""},
+		{input: []string{"thisfile", "/etc/dummy/thatfile"}, statResults: []error{os.ErrNotExist, errors.New("stat /etc/dummy/thatfile: not a directory")}, exp: ""},
 	}
 
 	statFunc = fakestat
@@ -262,7 +265,8 @@ func TestGetConfigFiles(t *testing.T) {
 			config: map[string]interface{}{
 				"components": []string{"apiserver"},
 				"apiserver":  map[string]interface{}{"confs": []string{"apiserver", "kube-apiserver"}},
-				"thing":      map[string]interface{}{"confs": []string{"/my/file/thing"}}},
+				"thing":      map[string]interface{}{"confs": []string{"/my/file/thing"}},
+			},
 			statResults: []error{os.ErrNotExist, nil},
 			exp:         map[string]string{"apiserver": "kube-apiserver"},
 		},
@@ -271,7 +275,8 @@ func TestGetConfigFiles(t *testing.T) {
 			config: map[string]interface{}{
 				"components": []string{"apiserver", "thing"},
 				"apiserver":  map[string]interface{}{"confs": []string{"apiserver", "kube-apiserver"}},
-				"thing":      map[string]interface{}{"confs": []string{"/my/file/thing"}}},
+				"thing":      map[string]interface{}{"confs": []string{"/my/file/thing"}},
+			},
 			statResults: []error{os.ErrNotExist, nil, nil},
 			exp:         map[string]string{"apiserver": "kube-apiserver", "thing": "/my/file/thing"},
 		},
@@ -280,7 +285,8 @@ func TestGetConfigFiles(t *testing.T) {
 			config: map[string]interface{}{
 				"components": []string{"apiserver", "thing"},
 				"apiserver":  map[string]interface{}{"confs": []string{"apiserver", "kube-apiserver"}},
-				"thing":      map[string]interface{}{"confs": []string{"/my/file/thing"}, "defaultconf": "another/thing"}},
+				"thing":      map[string]interface{}{"confs": []string{"/my/file/thing"}, "defaultconf": "another/thing"},
+			},
 			statResults: []error{os.ErrNotExist, nil, os.ErrNotExist},
 			exp:         map[string]string{"apiserver": "kube-apiserver", "thing": "another/thing"},
 		},
@@ -289,7 +295,8 @@ func TestGetConfigFiles(t *testing.T) {
 			config: map[string]interface{}{
 				"components": []string{"apiserver", "thing"},
 				"apiserver":  map[string]interface{}{"confs": []string{"apiserver", "kube-apiserver"}},
-				"thing":      map[string]interface{}{"confs": []string{"/my/file/thing"}}},
+				"thing":      map[string]interface{}{"confs": []string{"/my/file/thing"}},
+			},
 			statResults: []error{os.ErrNotExist, nil, os.ErrNotExist},
 			exp:         map[string]string{"apiserver": "kube-apiserver", "thing": "thing"},
 		},
@@ -389,6 +396,58 @@ func TestGetServiceFiles(t *testing.T) {
 	}
 }
 
+func TestGetDatadirFiles(t *testing.T) {
+	var err error
+	datadir, err := os.MkdirTemp("", "kube-bench-test-etcd-data-dir")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory")
+	}
+	defer os.RemoveAll(datadir)
+
+	cases := []struct {
+		config      map[string]interface{}
+		exp         map[string]string
+		statResults []error
+	}{
+		{
+			config: map[string]interface{}{
+				"components": []string{"etcd"},
+				"etcd": map[string]interface{}{"datadirs": []string{datadir},
+					"defaultdatadir": "/var/lib/etcd/default.etcd"},
+			},
+			statResults: []error{nil},
+			exp:         map[string]string{"etcd": datadir},
+		},
+		// fallback to defaultdatadir
+		{
+			config: map[string]interface{}{
+				"components": []string{"etcd"},
+				"etcd": map[string]interface{}{"datadirs": []string{"/path/to/etcd/data.etcd"},
+					"defaultdatadir": "/var/lib/etcd/default.etcd"},
+			},
+			statResults: []error{os.ErrNotExist},
+			exp:         map[string]string{"etcd": "/var/lib/etcd/default.etcd"},
+		},
+	}
+
+	v := viper.New()
+	statFunc = fakestat
+
+	for id, c := range cases {
+		t.Run(strconv.Itoa(id), func(t *testing.T) {
+			for k, val := range c.config {
+				v.Set(k, val)
+			}
+			e = c.statResults
+			eIndex = 0
+			m := getFiles(v, "datadir")
+			if !reflect.DeepEqual(m, c.exp) {
+				t.Fatalf("Got %v\nExpected %v", m, c.exp)
+			}
+		})
+	}
+}
+
 func TestMakeSubsitutions(t *testing.T) {
 	cases := []struct {
 		input        string
@@ -414,7 +473,7 @@ func TestMakeSubsitutions(t *testing.T) {
 
 func TestGetConfigFilePath(t *testing.T) {
 	var err error
-	cfgDir, err = ioutil.TempDir("", "kube-bench-test")
+	cfgDir, err = os.MkdirTemp("", "kube-bench-test")
 	if err != nil {
 		t.Fatalf("Failed to create temp directory")
 	}
@@ -424,7 +483,7 @@ func TestGetConfigFilePath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir")
 	}
-	err = ioutil.WriteFile(filepath.Join(d, "master.yaml"), []byte("hello world"), 0666)
+	err = os.WriteFile(filepath.Join(d, "master.yaml"), []byte("hello world"), 0666)
 	if err != nil {
 		t.Logf("Failed to create temp file")
 	}
@@ -459,7 +518,6 @@ func TestGetConfigFilePath(t *testing.T) {
 }
 
 func TestDecrementVersion(t *testing.T) {
-
 	cases := []struct {
 		kubeVersion string
 		succeed     bool
@@ -486,7 +544,7 @@ func TestDecrementVersion(t *testing.T) {
 }
 
 func TestGetYamlFilesFromDir(t *testing.T) {
-	cfgDir, err := ioutil.TempDir("", "kube-bench-test")
+	cfgDir, err := os.MkdirTemp("", "kube-bench-test")
 	if err != nil {
 		t.Fatalf("Failed to create temp directory")
 	}
@@ -498,11 +556,11 @@ func TestGetYamlFilesFromDir(t *testing.T) {
 		t.Fatalf("Failed to create temp dir")
 	}
 
-	err = ioutil.WriteFile(filepath.Join(d, "something.yaml"), []byte("hello world"), 0666)
+	err = os.WriteFile(filepath.Join(d, "something.yaml"), []byte("hello world"), 0666)
 	if err != nil {
 		t.Fatalf("error writing file %v", err)
 	}
-	err = ioutil.WriteFile(filepath.Join(d, "config.yaml"), []byte("hello world"), 0666)
+	err = os.WriteFile(filepath.Join(d, "config.yaml"), []byte("hello world"), 0666)
 	if err != nil {
 		t.Fatalf("error writing file %v", err)
 	}
@@ -527,46 +585,60 @@ func Test_getPlatformNameFromKubectlOutput(t *testing.T) {
 	tests := []struct {
 		name string
 		args args
-		want string
+		want Platform
 	}{
 		{
 			name: "eks",
 			args: args{s: "v1.17.9-eks-4c6976"},
-			want: "eks",
+			want: Platform{Name: "eks", Version: "1.17"},
 		},
 		{
 			name: "gke",
 			args: args{s: "v1.17.6-gke.1"},
-			want: "gke",
+			want: Platform{Name: "gke", Version: "1.17"},
 		},
 		{
 			name: "ack",
 			args: args{s: "v1.18.8-aliyun.1"},
-			want: "aliyun",
+			want: Platform{Name: "aliyun", Version: "1.18"},
 		},
 		{
 			name: "unknown",
 			args: args{s: "v1.17.6"},
-			want: "",
+			want: Platform{},
 		},
 		{
 			name: "empty string",
 			args: args{s: ""},
-			want: "",
+			want: Platform{},
+		},
+		{
+			name: "k3s",
+			args: args{s: "v1.27.6+k3s1"},
+			want: Platform{Name: "k3s", Version: "1.27"},
+		},
+		{
+			name: "rancher1",
+			args: args{s: "v1.25.13-rancher1-1"},
+			want: Platform{Name: "rancher1", Version: "1.25"},
+		},
+		{
+			name: "rke2",
+			args: args{s: "v1.27.6+rke2r1"},
+			want: Platform{Name: "rke2r", Version: "1.27"},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := getPlatformNameFromVersion(tt.args.s); got != tt.want {
-				t.Errorf("getPlatformNameFromKubectlOutput() = %v, want %v", got, tt.want)
-			}
+			got := getPlatformInfoFromVersion(tt.args.s)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
 
 func Test_getPlatformBenchmarkVersion(t *testing.T) {
 	type args struct {
-		platform string
+		platform Platform
 	}
 	tests := []struct {
 		name string
@@ -576,51 +648,86 @@ func Test_getPlatformBenchmarkVersion(t *testing.T) {
 		{
 			name: "eks",
 			args: args{
-				platform: "eks",
+				platform: Platform{Name: "eks"},
 			},
-			want: "eks-1.0",
+			want: "eks-1.5.0",
 		},
 		{
-			name: "gke",
+			name: "gke 1.19",
 			args: args{
-				platform: "gke",
+				platform: Platform{Name: "gke", Version: "1.19"},
 			},
 			want: "gke-1.0",
 		},
 		{
+			name: "gke 1.20",
+			args: args{
+				platform: Platform{Name: "gke", Version: "1.20"},
+			},
+			want: "gke-1.2.0",
+		},
+		{
+			name: "gke 1.22",
+			args: args{
+				platform: Platform{Name: "gke", Version: "1.22"},
+			},
+			want: "gke-1.2.0",
+		},
+		{
 			name: "aliyun",
 			args: args{
-				platform: "aliyun",
+				platform: Platform{Name: "aliyun"},
 			},
 			want: "ack-1.0",
 		},
 		{
 			name: "unknown",
 			args: args{
-				platform: "rh",
+				platform: Platform{Name: "rh"},
 			},
 			want: "",
 		},
 		{
 			name: "empty",
 			args: args{
-				platform: "",
+				platform: Platform{},
 			},
 			want: "",
 		},
 		{
 			name: "openshift3",
 			args: args{
-				platform: "ocp-3.10",
+				platform: Platform{Name: "ocp", Version: "3.10"},
 			},
 			want: "rh-0.7",
 		},
 		{
 			name: "openshift4",
 			args: args{
-				platform: "ocp-4.1",
+				platform: Platform{Name: "ocp", Version: "4.1"},
 			},
 			want: "rh-1.0",
+		},
+		{
+			name: "k3s",
+			args: args{
+				platform: Platform{Name: "k3s", Version: "1.27"},
+			},
+			want: "k3s-cis-1.7",
+		},
+		{
+			name: "rancher1",
+			args: args{
+				platform: Platform{Name: "rancher", Version: "1.27"},
+			},
+			want: "rke-cis-1.7",
+		},
+		{
+			name: "rke2",
+			args: args{
+				platform: Platform{Name: "rke2r", Version: "1.27"},
+			},
+			want: "rke2-cis-1.7",
 		},
 	}
 	for _, tt := range tests {
@@ -633,7 +740,6 @@ func Test_getPlatformBenchmarkVersion(t *testing.T) {
 }
 
 func Test_getOcpValidVersion(t *testing.T) {
-
 	cases := []struct {
 		openShiftVersion string
 		succeed          bool
